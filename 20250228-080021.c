@@ -252,3 +252,268 @@ SELECT u.user_id, u.first_name, u.last_name, us.status
 FROM Users u
 JOIN User_Subscription us ON u.user_id = us.user_id
 WHERE us.status = 'Active';
+
+DELIMITER //
+CREATE PROCEDURE AddUser(
+    IN p_first_name VARCHAR(255),
+    IN p_last_name VARCHAR(255),
+    IN p_email VARCHAR(255),
+    IN p_password_hash VARCHAR(255),
+    IN p_date_of_birth DATE,
+    IN p_phone_number VARCHAR(15),
+    OUT p_user_id INT
+)
+BEGIN
+    INSERT INTO Users (first_name, last_name, email, password_hash, date_of_birth, phone_number)
+    VALUES (p_first_name, p_last_name, p_email, p_password_hash, p_date_of_birth, p_phone_number);
+    
+    SET p_user_id = LAST_INSERT_ID();
+END //
+DELIMITER ;
+
+CALL AddUser('Alice', 'Smith', 'alice.smith@example.com', 'hashed_pass', '1992-08-10', '9876543210', @new_user_id);
+SELECT @new_user_id;  -- Check the newly created user ID
+
+DELIMITER //
+CREATE PROCEDURE GetUserSubscription(
+    IN p_user_id INT
+)
+BEGIN
+    SELECT u.user_id, u.first_name, u.last_name, s.plan_type, s.price, us.start_date, us.end_date, us.status
+    FROM Users u
+    JOIN User_Subscription us ON u.user_id = us.user_id
+    JOIN Subscription s ON us.subscription_id = s.subscription_id
+    WHERE u.user_id = p_user_id;
+END //
+DELIMITER ;
+
+CALL GetUserSubscription(1);
+
+DELIMITER //
+CREATE PROCEDURE UpdateSubscriptionStatus(
+    IN p_user_id INT,
+    IN p_status VARCHAR(50)
+)
+BEGIN
+    UPDATE User_Subscription
+    SET status = p_status
+    WHERE user_id = p_user_id;
+END //
+DELIMITER ;
+
+
+CALL UpdateSubscriptionStatus(1, 'Expired');
+SELECT * FROM User_Subscription WHERE user_id = 1;  -- Verify the update
+
+DELIMITER //
+CREATE PROCEDURE AddPayment(
+    IN p_user_id INT,
+    IN p_amount_paid DECIMAL(10,2),
+    IN p_payment_method VARCHAR(50),
+    OUT p_payment_id INT
+)
+BEGIN
+    INSERT INTO Payment (user_id, amount_paid, payment_method)
+    VALUES (p_user_id, p_amount_paid, p_payment_method);
+    
+    SET p_payment_id = LAST_INSERT_ID();
+END //
+DELIMITER ;
+
+CALL AddPayment(1, 15.99, 'Credit Card', @new_payment_id);
+SELECT @new_payment_id;  -- Verify the new payment ID
+
+DELIMITER //
+CREATE PROCEDURE GetMostWatchedContent()
+BEGIN
+    SELECT c.title, COUNT(*) AS watch_count
+    FROM Watch_History wh
+    JOIN Content c ON wh.content_id = c.content_id
+    GROUP BY c.title
+    ORDER BY watch_count DESC
+    LIMIT 1;
+END //
+DELIMITER ;
+
+CALL GetMostWatchedContent();
+
+DELIMITER //
+CREATE PROCEDURE CalculateTotalRevenue(OUT p_total_revenue DECIMAL(10,2))
+BEGIN
+    SELECT SUM(amount_paid) INTO p_total_revenue
+    FROM Payment
+    WHERE payment_status = 'Completed';
+END //
+DELIMITER ;
+
+CALL CalculateTotalRevenue(@total_revenue);
+SELECT @total_revenue;  -- Check total revenue
+
+DELIMITER //
+CREATE FUNCTION GetUserAge(user_id INT) 
+RETURNS INT DETERMINISTIC
+BEGIN
+    DECLARE user_age INT;
+    SELECT TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) INTO user_age
+    FROM Users 
+    WHERE user_id = user_id;
+    RETURN user_age;
+END //
+DELIMITER ;
+
+SELECT GetUserAge(1) AS UserAge;
+
+DELIMITER //
+CREATE FUNCTION GetAverageRating(content_id INT) 
+RETURNS DECIMAL(3,1) DETERMINISTIC
+BEGIN
+    DECLARE avg_rating DECIMAL(3,1);
+    SELECT AVG(rating) INTO avg_rating 
+    FROM Reviews 
+    WHERE content_id = content_id;
+    RETURN COALESCE(avg_rating, 0);
+END //
+DELIMITER ;
+
+SELECT GetAverageRating(1) AS AvgRating;
+
+DELIMITER //
+CREATE FUNCTION GetActiveSubscriptions(user_id INT) 
+RETURNS TABLE
+RETURN 
+    SELECT u.user_id, u.first_name, u.last_name, s.plan_type, us.start_date, us.end_date
+    FROM Users u
+    JOIN User_Subscription us ON u.user_id = us.user_id
+    JOIN Subscription s ON us.subscription_id = s.subscription_id
+    WHERE u.user_id = user_id AND us.status = 'Active';
+//
+DELIMITER ;
+
+SELECT * FROM GetActiveSubscriptions(1);
+
+DELIMITER //
+CREATE FUNCTION GetUserWatchHistory(user_id INT) 
+RETURNS TABLE
+RETURN 
+    SELECT wh.history_id, c.title, wh.watched_at, wh.progress
+    FROM Watch_History wh
+    JOIN Content c ON wh.content_id = c.content_id
+    WHERE wh.user_id = user_id;
+//
+DELIMITER ;
+
+SELECT * FROM GetUserWatchHistory(1);
+
+DELIMITER //
+CREATE TRIGGER LogSubscriptionChanges
+AFTER UPDATE ON User_Subscription
+FOR EACH ROW
+BEGIN
+    INSERT INTO Subscription_Log (user_id, old_status, new_status, changed_at)
+    VALUES (OLD.user_id, OLD.status, NEW.status, NOW());
+END;
+//
+DELIMITER ;
+
+UPDATE User_Subscription 
+SET status = 'Expired' 
+WHERE user_id = 1;
+
+SELECT * FROM Subscription_Log; -- Check the log for recorded changes
+
+DELIMITER //
+CREATE TRIGGER PreventDowngrade
+BEFORE UPDATE ON User_Subscription
+FOR EACH ROW
+BEGIN
+    DECLARE old_price DECIMAL(10,2);
+    SELECT price INTO old_price FROM Subscription WHERE subscription_id = OLD.subscription_id;
+
+    IF old_price > (SELECT price FROM Subscription WHERE subscription_id = NEW.subscription_id) THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Downgrading subscription is not allowed.';
+    END IF;
+END;
+//
+DELIMITER ;
+
+UPDATE User_Subscription 
+SET subscription_id = (SELECT subscription_id FROM Subscription WHERE plan_type = 'Basic') 
+WHERE user_id = 1;
+
+DELIMITER //
+CREATE TRIGGER LogContentDeletion
+BEFORE DELETE ON Content
+FOR EACH ROW
+BEGIN
+    INSERT INTO Content_Log (content_id, title, deleted_at)
+    VALUES (OLD.content_id, OLD.title, NOW());
+END;
+//
+DELIMITER ;
+
+DELETE FROM Content WHERE content_id = 1;
+SELECT * FROM Content_Log; -- Verify deletion log
+
+DELIMITER //
+CREATE PROCEDURE UpdateWatchStatus()
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE user_id_var INT;
+    DECLARE content_id_var INT;
+    DECLARE cur CURSOR FOR 
+        SELECT user_id, content_id FROM Watch_History WHERE progress = 100;
+    
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    OPEN cur;
+    
+    read_loop: LOOP
+        FETCH cur INTO user_id_var, content_id_var;
+        IF done THEN 
+            LEAVE read_loop;
+        END IF;
+
+        -- Mark content as completed
+        UPDATE Watch_History SET status = 'Completed' 
+        WHERE user_id = user_id_var AND content_id = content_id_var;
+    END LOOP;
+    
+    CLOSE cur;
+END;
+//
+DELIMITER ;
+
+CALL UpdateWatchStatus();
+SELECT * FROM Watch_History WHERE status = 'Completed'; -- Verify updates
+
+DELIMITER //
+CREATE PROCEDURE SendPaymentReminders()
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE user_email VARCHAR(255);
+    DECLARE cur CURSOR FOR 
+        SELECT email FROM Users WHERE user_id IN 
+            (SELECT user_id FROM Payment WHERE payment_status = 'Pending');
+    
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    OPEN cur;
+    
+    read_loop: LOOP
+        FETCH cur INTO user_email;
+        IF done THEN 
+            LEAVE read_loop;
+        END IF;
+
+        -- Simulate sending an email (In a real app, integrate with a mail API)
+        INSERT INTO Payment_Reminders (email, reminder_sent_at) VALUES (user_email, NOW());
+    END LOOP;
+    
+    CLOSE cur;
+END;
+//
+DELIMITER ;
+
+CALL SendPaymentReminders();
+SELECT * FROM Payment_Reminders; -- Check reminder log
