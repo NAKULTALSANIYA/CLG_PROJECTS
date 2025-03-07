@@ -183,3 +183,72 @@ VALUES
 ('Arjun', 'Kumar', 'arjun.kumar@example.com', 'hashed_password_404', '1988-09-06', '9976554433', 'Inactive'),
 ('Neha', 'Joshi', 'neha.joshi@example.com', 'hashed_password_505', '1990-12-14', '9988776655', 'Active');
 
+INSERT INTO Users (first_name, last_name, email, password_hash, date_of_birth, phone_number) 
+VALUES ('John', 'Doe', 'john.doe@example.com', 'hashed_password', '1990-05-15', '1234567890');
+
+INSERT INTO Content (content_type, title, description, language, release_year, duration, rating) 
+VALUES ('Movie', 'Inception', 'A mind-bending thriller', 'English', 2010, 148, 8.8);
+
+INSERT INTO Subscription (plan_type, price, duration_months) 
+VALUES ('Premium', 15.99, 1);
+
+UPDATE Users 
+SET subscription_status = 'Active' 
+WHERE user_id = 1;
+
+UPDATE Content 
+SET rating = 9.0 
+WHERE content_id = 1;
+
+UPDATE Payment 
+SET payment_status = 'Failed' 
+WHERE payment_id = 1;
+
+DELETE FROM Users 
+WHERE user_id = 2;
+
+DELETE FROM Content 
+WHERE content_id = 3;
+
+SELECT * FROM Content 
+WHERE content_type = 'Movie' AND release_year > 2010;
+
+SELECT * FROM User_Subscription 
+WHERE status = 'Active';
+
+SELECT u.user_id, u.first_name, u.last_name, s.plan_type, s.price, us.start_date, us.end_date
+FROM Users u
+JOIN User_Subscription us ON u.user_id = us.user_id
+JOIN Subscription s ON us.subscription_id = s.subscription_id;
+
+SELECT u.first_name, u.last_name, c.title, wh.watched_at, wh.progress
+FROM Watch_History wh
+JOIN Users u ON wh.user_id = u.user_id
+JOIN Content c ON wh.content_id = c.content_id;
+
+SELECT u.first_name, u.last_name, c.title, r.rating, r.review_text, r.created_at
+FROM Reviews r
+JOIN Users u ON r.user_id = u.user_id
+JOIN Content c ON r.content_id = c.content_id;
+
+SELECT COUNT(*) AS total_users FROM Users;
+
+SELECT title, AVG(rating) AS average_rating
+FROM Reviews r
+JOIN Content c ON r.content_id = c.content_id
+WHERE c.content_id = 1
+GROUP BY c.title;
+
+SELECT SUM(amount_paid) AS total_revenue FROM Payment WHERE payment_status = 'Completed';
+
+SELECT c.title, COUNT(*) AS watch_count
+FROM Watch_History wh
+JOIN Content c ON wh.content_id = c.content_id
+GROUP BY c.title
+ORDER BY watch_count DESC
+LIMIT 1;
+
+SELECT u.user_id, u.first_name, u.last_name, us.status
+FROM Users u
+JOIN User_Subscription us ON u.user_id = us.user_id
+WHERE us.status = 'Active';
