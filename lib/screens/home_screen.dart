@@ -77,12 +77,7 @@ class HomeScreen extends StatelessWidget {
                                       maxLines: 3,
                                       overflow: TextOverflow.ellipsis,
                                     ),
-                                    const SizedBox(height: 12),
-                                    FilledButton.icon(
-                                      onPressed: () {},
-                                      icon: const Icon(Icons.arrow_forward_rounded),
-                                      label: const Text('Details'),
-                                    ),
+                                    const SizedBox(height: 8),
                                   ],
                                 ),
                               ),
